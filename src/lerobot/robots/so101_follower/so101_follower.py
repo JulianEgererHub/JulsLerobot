@@ -33,6 +33,11 @@ from .config_so101_follower import SO101FollowerConfig
 
 logger = logging.getLogger(__name__)
 
+# Julian
+from lerobot.cameras.realsense.camera_realsense import RealSenseCamera
+# Julian
+
+
 
 class SO101Follower(Robot):
     """
@@ -64,11 +69,21 @@ class SO101Follower(Robot):
     def _motors_ft(self) -> dict[str, type]:
         return {f"{motor}.pos": float for motor in self.bus.motors}
 
+    #Julian
     @property
     def _cameras_ft(self) -> dict[str, tuple]:
-        return {
-            cam: (self.config.cameras[cam].height, self.config.cameras[cam].width, 3) for cam in self.cameras
-        }
+        features: dict[str, tuple] = {}
+        for cam_name, cam in self.cameras.items():
+            cam_cfg = self.config.cameras[cam_name]
+            features[cam_name] = (cam_cfg.height, cam_cfg.width, 3)
+
+            if getattr(cam_cfg, "use_depth", False):
+                features[f"{cam_name}_depth"] = (cam_cfg.height, cam_cfg.width, 1)
+
+        return features
+        # return {
+        #     cam: (self.config.cameras[cam].height, self.config.cameras[cam].width, 3) for cam in self.cameras
+        # }
 
     @cached_property
     def observation_features(self) -> dict[str, type | tuple]:
@@ -185,6 +200,14 @@ class SO101Follower(Robot):
         for cam_key, cam in self.cameras.items():
             start = time.perf_counter()
             obs_dict[cam_key] = cam.async_read()
+
+            ### Julian
+            # Read depth only for RealSense cameras
+            if isinstance(cam, RealSenseCamera) and cam.config.use_depth:
+                depth_map = cam.read_depth()
+                obs_dict[f"{cam_key}_depth"] = depth_map[..., None]
+            ### Julian
+
             dt_ms = (time.perf_counter() - start) * 1e3
             logger.debug(f"{self} read {cam_key}: {dt_ms:.1f}ms")
 

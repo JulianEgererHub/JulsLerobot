@@ -543,8 +543,11 @@ def _validate_stat_value(value: np.ndarray, key: str, feature_key: str) -> None:
     if key == "count" and value.shape != (1,):
         raise ValueError(f"Shape of 'count' must be (1), but is {value.shape} instead.")
 
-    if "image" in feature_key and key != "count" and value.shape != (3, 1, 1):
-        raise ValueError(f"Shape of quantile '{key}' must be (3,1,1), but is {value.shape} instead.")
+    if "image" in feature_key and key != "count":
+        if value.ndim != 3 or value.shape[1:] != (1, 1):
+            raise ValueError(
+                f"Shape of quantile '{key}' must be (C,1,1) for some channel count C, but is {value.shape} instead."
+            )
 
 
 def _assert_type_and_shape(stats_list: list[dict[str, dict]]):

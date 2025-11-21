@@ -320,15 +320,15 @@ def record_loop(
             act_processed_policy: RobotAction = make_robot_action(action_values, dataset.features)
 
         elif policy is None and isinstance(teleop, Teleoperator):
-            act = teleop.get_action()
+            act = teleop.get_action(mirror_shoulder_pan=True)
 
             # Applies a pipeline to the raw teleop action, default is IdentityProcessor
             act_processed_teleop = teleop_action_processor((act, obs))
 
         elif policy is None and isinstance(teleop, list):
-            arm_action = teleop_arm.get_action()
+            arm_action = teleop_arm.get_action(mirror_shoulder_pan=True)
             arm_action = {f"arm_{k}": v for k, v in arm_action.items()}
-            keyboard_action = teleop_keyboard.get_action()
+            keyboard_action = teleop_keyboard.get_action(mirror_shoulder_pan=True)
             base_action = robot._from_keyboard_to_base_action(keyboard_action)
             act = {**arm_action, **base_action} if len(base_action) > 0 else arm_action
             act_processed_teleop = teleop_action_processor((act, obs))

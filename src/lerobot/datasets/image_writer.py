@@ -38,34 +38,84 @@ def safe_stop_image_writer(func):
     return wrapper
 
 
+# def image_array_to_pil_image(image_array: np.ndarray, range_check: bool = True) -> PIL.Image.Image:
+#     # TODO(aliberts): handle 1 channel and 4 for depth images
+#     if image_array.ndim != 3:
+#         raise ValueError(f"The array has {image_array.ndim} dimensions, but 3 is expected for an image.")
+
+#     if image_array.shape[0] == 3:
+#         # Transpose from pytorch convention (C, H, W) to (H, W, C)
+#         image_array = image_array.transpose(1, 2, 0)
+
+#         if image_array.ndim == 3:
+#             channels = image_array.shape[-1]
+#             if channels == 1:
+#                 image_array = image_array[..., 0]          # single-channel (depth/grayscale)
+#             elif channels != 3:
+#                 raise NotImplementedError(
+#                     f"The image has {channels} channels, but only 1 (grayscale/depth) or 3 (RGB) are supported."
+#             )
+
+#     # elif image_array.shape[-1] != 3:
+#     #     raise NotImplementedError(
+#     #         f"The image has {image_array.shape[-1]} channels, but 3 is required for now."
+#     #     )
+
+#     if image_array.dtype != np.uint8:
+#         if range_check:
+#             max_ = image_array.max().item()
+#             min_ = image_array.min().item()
+#             if max_ > 1.0 or min_ < 0.0:
+#                 raise ValueError(
+#                     "The image data type is float, which requires values in the range [0.0, 1.0]. "
+#                     f"However, the provided range is [{min_}, {max_}]. Please adjust the range or "
+#                     "provide a uint8 image with values in the range [0, 255]."
+#                 )
+
+#         image_array = (image_array * 255).astype(np.uint8)
+
+#     return PIL.Image.fromarray(image_array)
+
+
 def image_array_to_pil_image(image_array: np.ndarray, range_check: bool = True) -> PIL.Image.Image:
-    # TODO(aliberts): handle 1 channel and 4 for depth images
-    if image_array.ndim != 3:
-        raise ValueError(f"The array has {image_array.ndim} dimensions, but 3 is expected for an image.")
+    """
+    Convert numpy arrays (RGB or single-channel) to PIL images.
+    Supports tensors shaped (C, H, W), (H, W, C), or (H, W) with dtypes uint8/uint16/float.
+    """
+    array = image_array
 
-    if image_array.shape[0] == 3:
-        # Transpose from pytorch convention (C, H, W) to (H, W, C)
-        image_array = image_array.transpose(1, 2, 0)
+    if array.ndim == 3 and array.shape[0] in (1, 3):
+        # Convert channel-first tensors to channel-last
+        array = array.transpose(1, 2, 0)
 
-    elif image_array.shape[-1] != 3:
-        raise NotImplementedError(
-            f"The image has {image_array.shape[-1]} channels, but 3 is required for now."
+    if array.ndim == 3:
+        channels = array.shape[-1]
+        if channels == 1:
+            array = array[..., 0]
+        elif channels != 3:
+            raise NotImplementedError(
+                f"The image has {channels} channels, but only 1 (grayscale/depth) or 3 (RGB) are supported."
+            )
+    elif array.ndim != 2:
+        raise ValueError(
+            f"The array has {array.ndim} dimensions, but only 2 (grayscale) or 3 (RGB) are supported."
         )
 
-    if image_array.dtype != np.uint8:
+    if np.issubdtype(array.dtype, np.floating):
         if range_check:
-            max_ = image_array.max().item()
-            min_ = image_array.min().item()
+            max_ = float(array.max())
+            min_ = float(array.min())
             if max_ > 1.0 or min_ < 0.0:
                 raise ValueError(
                     "The image data type is float, which requires values in the range [0.0, 1.0]. "
-                    f"However, the provided range is [{min_}, {max_}]. Please adjust the range or "
-                    "provide a uint8 image with values in the range [0, 255]."
+                    f"However, the provided range is [{min_}, {max_}]."
                 )
+        array = (array * 255).astype(np.uint8)
+    elif array.dtype not in (np.uint8, np.uint16):
+        array = array.astype(np.uint8)
 
-        image_array = (image_array * 255).astype(np.uint8)
+    return PIL.Image.fromarray(array)
 
-    return PIL.Image.fromarray(image_array)
 
 
 def write_image(image: np.ndarray | PIL.Image.Image, fpath: Path, compress_level: int = 1):

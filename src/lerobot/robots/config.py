@@ -25,6 +25,7 @@ class RobotConfig(draccus.ChoiceRegistry, abc.ABC):
     id: str | None = None
     # Directory to store calibration file
     calibration_dir: Path | None = None
+    print(calibration_dir)
 
     def __post_init__(self):
         if hasattr(self, "cameras") and self.cameras:

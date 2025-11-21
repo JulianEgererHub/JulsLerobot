@@ -28,7 +28,6 @@ import numpy as np
 import packaging.version
 import pandas
 import pandas as pd
-import pyarrow.dataset as pa_ds
 import pyarrow.parquet as pq
 import torch
 from datasets import Dataset
@@ -104,9 +103,7 @@ def update_chunk_file_indices(chunk_idx: int, file_idx: int, chunks_size: int) -
     return chunk_idx, file_idx
 
 
-def load_nested_dataset(
-    pq_dir: Path, features: datasets.Features | None = None, episodes: list[int] | None = None
-) -> Dataset:
+def load_nested_dataset(pq_dir: Path, features: datasets.Features | None = None) -> Dataset:
     """Find parquet files in provided directory {pq_dir}/chunk-xxx/file-xxx.parquet
     Convert parquet files to pyarrow memory mapped in a cache folder for efficient RAM usage
     Concatenate all pyarrow references to return HF Dataset format
@@ -114,26 +111,15 @@ def load_nested_dataset(
     Args:
         pq_dir: Directory containing parquet files
         features: Optional features schema to ensure consistent loading of complex types like images
-        episodes: Optional list of episode indices to filter. Uses PyArrow predicate pushdown for efficiency.
     """
     paths = sorted(pq_dir.glob("*/*.parquet"))
     if len(paths) == 0:
         raise FileNotFoundError(f"Provided directory does not contain any parquet file: {pq_dir}")
 
+    # TODO(rcadene): set num_proc to accelerate conversion to pyarrow
     with SuppressProgressBars():
-        # When no filtering needed, Dataset uses memory-mapped loading for efficiency
-        # PyArrow loads the entire dataset into memory
-        if episodes is None:
-            return Dataset.from_parquet([str(path) for path in paths], features=features)
-
-        arrow_dataset = pa_ds.dataset(paths, format="parquet")
-        filter_expr = pa_ds.field("episode_index").isin(episodes)
-        table = arrow_dataset.to_table(filter=filter_expr)
-
-        if features is not None:
-            table = table.cast(features.arrow_schema)
-
-        return Dataset(table)
+        datasets = Dataset.from_parquet([str(path) for path in paths], features=features)
+    return datasets
 
 
 def get_parquet_num_frames(parquet_path: str | Path) -> int:
@@ -384,6 +370,29 @@ def load_episodes(local_dir: Path) -> datasets.Dataset:
     return episodes
 
 
+# def load_image_as_numpy(
+#     fpath: str | Path, dtype: np.dtype = np.float32, channel_first: bool = True
+# ) -> np.ndarray:
+#     """Load an image from a file into a numpy array.
+
+#     Args:
+#         fpath (str | Path): Path to the image file.
+#         dtype (np.dtype): The desired data type of the output array. If floating,
+#             pixels are scaled to [0, 1].
+#         channel_first (bool): If True, converts the image to (C, H, W) format.
+#             Otherwise, it remains in (H, W, C) format.
+
+#     Returns:
+#         np.ndarray: The image as a numpy array.
+#     """
+#     img = PILImage.open(fpath).convert("RGB")
+#     img_array = np.array(img, dtype=dtype)
+#     if channel_first:  # (H, W, C) -> (C, H, W)
+#         img_array = np.transpose(img_array, (2, 0, 1))
+#     if np.issubdtype(dtype, np.floating):
+#         img_array /= 255.0
+#     return img_array
+
 def load_image_as_numpy(
     fpath: str | Path, dtype: np.dtype = np.float32, channel_first: bool = True
 ) -> np.ndarray:
@@ -399,12 +408,25 @@ def load_image_as_numpy(
     Returns:
         np.ndarray: The image as a numpy array.
     """
-    img = PILImage.open(fpath).convert("RGB")
-    img_array = np.array(img, dtype=dtype)
-    if channel_first:  # (H, W, C) -> (C, H, W)
-        img_array = np.transpose(img_array, (2, 0, 1))
+    img = PILImage.open(fpath)
+    img_array = np.array(img)
+
     if np.issubdtype(dtype, np.floating):
-        img_array /= 255.0
+        img_array = img_array.astype(np.float32)
+        if np.issubdtype(img_array.dtype, np.integer):
+            max_val = float(np.iinfo(img_array.dtype).max)
+            img_array /= max_val if max_val > 0 else 1.0
+        else:
+            img_array /= 255.0
+    elif img_array.dtype != dtype:
+        img_array = img_array.astype(dtype)
+
+    if channel_first:
+        if img_array.ndim == 2:
+            img_array = img_array[None, ...]
+        elif img_array.ndim == 3:
+            img_array = np.transpose(img_array, (2, 0, 1))
+
     return img_array
 
 

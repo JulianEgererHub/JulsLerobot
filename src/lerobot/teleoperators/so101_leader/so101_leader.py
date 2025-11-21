@@ -136,10 +136,14 @@ class SO101Leader(Teleoperator):
             self.bus.setup_motor(motor)
             print(f"'{motor}' motor id set to {self.bus.motors[motor].id}")
 
-    def get_action(self) -> dict[str, float]:
+    def get_action(self,mirror_shoulder_pan = False) -> dict[str, float]:
         start = time.perf_counter()
         action = self.bus.sync_read("Present_Position")
         action = {f"{motor}.pos": val for motor, val in action.items()}
+        ### Julian
+        if mirror_shoulder_pan == True:
+            action["shoulder_pan.pos"] = -1*action["shoulder_pan.pos"]
+        ### Julian
         dt_ms = (time.perf_counter() - start) * 1e3
         logger.debug(f"{self} read action: {dt_ms:.1f}ms")
         return action
